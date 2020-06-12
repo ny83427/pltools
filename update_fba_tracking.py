@@ -3,6 +3,7 @@ from selenium.webdriver.common.keys import Keys
 import chromedriver_autoinstaller
 from time import sleep
 import argparse
+import os
 import re
 import sys
 import random
@@ -12,7 +13,10 @@ def init_web_driver(email):
     chromedriver_autoinstaller.install()
 
     options = webdriver.ChromeOptions()
-    options.add_argument('user-data-dir=C:\\Tmp\\pltools\\{0}'.format(email.lower()))
+    ddir = f'C:\\Tmp\\pltools\\{email.lower()}'
+    # If two-factors not able to retrieve, try use code in the below
+    # ddir = os.path.expanduser('~\\.amazon_seller_management\\US')
+    options.add_argument(f'user-data-dir={ddir}')
     options.add_argument('--disable-extensions')
     options.add_argument('--start-maximized')
     options.add_argument('--disable-notifications')
@@ -38,7 +42,6 @@ def get_fba_tracking(driver, email, input, output):
     f = open(input, 'r')
     w = open(output, 'w')
     gs = open('google-sheet-paste.txt', 'w')
-    success = 0
     dict = {'UPSM': 'UPS Mail Innovations'}
     w.write('carrier-code\tcarrier-name\ttracking-number\torder-id\tship-date\n')
     for line in f:
@@ -47,7 +50,12 @@ def get_fba_tracking(driver, email, input, output):
             gs.write('\n')
             continue
         
-        confirm_date, fba_order_id, customer_order_id = parts[0].strip(), parts[1].strip(), parts[2].strip()
+        confirm_date, fba_order_id, customer_order_id = parts[0], parts[1], parts[-1]
+        if re.match(r'\d{3}-\d{7}-\d{7}\Z', customer_order_id) is None:
+            print(f'WARNING: Source Amazon order id {customer_order_id} is invalid!')
+            gs.write('\n')
+            continue
+
         try:
             url = f'https://sellercentral.amazon.com/orders-v3/search?page=1&q={fba_order_id}&qt=orderid&date-range=last-30'
             driver.get(url)
@@ -71,13 +79,14 @@ def get_fba_tracking(driver, email, input, output):
                         print(f'WARNING: {fba_order_id}/{customer_order_id} have multiple tracking numbers! We will use the first one only.')
                     
                     html = driver.find_element_by_id('shipment-tables').get_attribute('innerHTML')
-                    carrier = ''.join(re.findall(r'Carrier:.*<br>', html)).replace('Carrier:', '').replace('<br>', '').strip()
+                    carrier = re.findall(r'Carrier:.*<br>', html)[0].replace('Carrier:', '').replace('<br>', '').strip()
                     if carrier in dict.keys():
                         carrier = dict[carrier]
 
                     tracking_id = ta[0].get_attribute('href').replace('https://www.swiship.com/track?id=', '').replace('&loc=en_US', '')
                     print(f'{fba_order_id}\t{customer_order_id}\t{carrier}\t{tracking_id}\t{confirm_date}T07:00:00Z')
                     gs.write(f'{fba_order_id}\t{carrier}\t{tracking_id}\n')
+                    # Carrier not in dropdown list
                     if 'Amazon' in carrier:
                         w.write(f'Other\t{carrier}\t{tracking_id}\t{customer_order_id}\t{confirm_date}T07:00:00Z\n')
                     else:
@@ -86,14 +95,14 @@ def get_fba_tracking(driver, email, input, output):
             print('Bye~')
             break
         except:
-            print('Unexpected error occurred:', sys.exc_info()[0])
+            print(f'{fba_order_id} - Unexpected error occurred:', sys.exc_info()[0])
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-u", "--email", type=str, help="Seller account email")
     parser.add_argument("-i", "--input", type=str, default="fba-order-ids.txt", help="Input fba/customer order ids")
-    parser.add_argument("-o", "--output", type=str, default="trackings.txt", help="Output tracking files")
+    parser.add_argument("-o", "--output", type=str, default="trackings.txt", help="Output tracking file")
     args = parser.parse_args()
     print(args)
 
