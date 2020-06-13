@@ -1,21 +1,19 @@
-from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
-import chromedriver_autoinstaller
-from time import sleep
 import argparse
-import os
 import re
 import sys
-import random
+from time import sleep
+
+import chromedriver_autoinstaller
+from selenium import webdriver
 
 
 def init_web_driver(email):
     chromedriver_autoinstaller.install()
 
     options = webdriver.ChromeOptions()
-    ddir = f'C:\\Tmp\\pltools\\{email.lower()}'
     # If two-factors not able to retrieve, try use code in the below
     # ddir = os.path.expanduser('~\\.amazon_seller_management\\US')
+    ddir = f'C:\\Tmp\\pltools\\{email.lower()}'
     options.add_argument(f'user-data-dir={ddir}')
     options.add_argument('--disable-extensions')
     options.add_argument('--start-maximized')
@@ -31,18 +29,17 @@ def init_web_driver(email):
     while len(driver.find_elements_by_css_selector('#myo-search-input')) == 0:
         print('Please login manually to initialize')
         sleep(5)
-        continue
     return driver
 
 
-def get_fba_tracking(driver, email, input, output):
+def get_fba_tracking(driver, input, output):
     driver.get('https://sellercentral.amazon.com/orders-v3/search?date-range=last-30&q=SFPL&qt=orderid')
     sleep(3)
     
     f = open(input, 'r')
     w = open(output, 'w')
     gs = open('google-sheet-paste.txt', 'w')
-    dict = {'UPSM': 'UPS Mail Innovations'}
+    carrier_names = {'UPSM': 'UPS Mail Innovations'}
     w.write('carrier-code\tcarrier-name\ttracking-number\torder-id\tship-date\n')
     for line in f:
         parts = line.split()
@@ -76,12 +73,12 @@ def get_fba_tracking(driver, email, input, output):
                     gs.write(f'{fba_order_id}\t\t\n')
                 else:
                     if len(ta) > 1:
-                        print(f'WARNING: {fba_order_id}/{customer_order_id} have multiple tracking numbers! We will use the first one only.')
+                        print(f'WARNING: {fba_order_id}/{customer_order_id} have multiple tracking numbers!')
                     
                     html = driver.find_element_by_id('shipment-tables').get_attribute('innerHTML')
                     carrier = re.findall(r'Carrier:.*<br>', html)[0].replace('Carrier:', '').replace('<br>', '').strip()
-                    if carrier in dict.keys():
-                        carrier = dict[carrier]
+                    if carrier in carrier_names.keys():
+                        carrier = carrier_names[carrier]
 
                     tracking_id = ta[0].get_attribute('href').replace('https://www.swiship.com/track?id=', '').replace('&loc=en_US', '')
                     print(f'{fba_order_id}\t{customer_order_id}\t{carrier}\t{tracking_id}\t{confirm_date}T07:00:00Z')
@@ -101,13 +98,13 @@ def get_fba_tracking(driver, email, input, output):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-u", "--email", type=str, help="Seller account email")
-    parser.add_argument("-i", "--input", type=str, default="fba-order-ids.txt", help="Input fba/customer order ids")
-    parser.add_argument("-o", "--output", type=str, default="trackings.txt", help="Output tracking file")
+    parser.add_argument("-i", "--input", type=str, default="fba-order-ids.txt", help="FBA/customer order ids")
+    parser.add_argument("-o", "--output", type=str, default="trackings.txt", help="Shipping confirmation file")
     args = parser.parse_args()
     print(args)
 
     driver = init_web_driver(args.email)
     try:
-        get_fba_tracking(driver, args.email, args.input, args.output)
+        get_fba_tracking(driver, args.input, args.output)
     finally:
         driver.quit()
