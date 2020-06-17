@@ -3,39 +3,13 @@ import re
 import sys
 from time import sleep
 
-import chromedriver_autoinstaller
-from selenium import webdriver
-
-
-def init_web_driver(email):
-    chromedriver_autoinstaller.install()
-
-    options = webdriver.ChromeOptions()
-    # If two-factors not able to retrieve, try use code in the below
-    # ddir = os.path.expanduser('~\\.amazon_seller_management\\US')
-    ddir = f'C:\\Tmp\\pltools\\{email.lower()}'
-    options.add_argument(f'user-data-dir={ddir}')
-    options.add_argument('--disable-extensions')
-    options.add_argument('--start-maximized')
-    options.add_argument('--disable-notifications')
-    options.add_experimental_option('excludeSwitches', ['enable-automation'])
-    options.add_experimental_option('prefs', {'profile.default_content_setting_values.notifications': 2})
-
-    driver = webdriver.Chrome(options=options)
-    driver.set_page_load_timeout(30)
-    driver.implicitly_wait(7)
-
-    driver.get('https://sellercentral.amazon.com/orders-v3/ref=xx_myo_dnav_xx?page=1')
-    while len(driver.find_elements_by_css_selector('#myo-search-input')) == 0:
-        print('Please login manually to initialize')
-        sleep(5)
-    return driver
+import seller_central_base
 
 
 def get_fba_tracking(driver, input, output):
     driver.get('https://sellercentral.amazon.com/orders-v3/search?date-range=last-30&q=SFPL&qt=orderid')
     sleep(3)
-    
+
     f = open(input, 'r')
     w = open(output, 'w')
     gs = open('google-sheet-paste.txt', 'w')
@@ -46,7 +20,7 @@ def get_fba_tracking(driver, input, output):
         if len(parts) < 3:
             gs.write('\n')
             continue
-        
+
         confirm_date, fba_order_id, customer_order_id = parts[0], parts[1], parts[-1]
         if re.match(r'\d{3}-\d{7}-\d{7}\Z', customer_order_id) is None:
             print(f'WARNING: Source Amazon order id {customer_order_id} is invalid!')
@@ -74,7 +48,7 @@ def get_fba_tracking(driver, input, output):
                 else:
                     if len(ta) > 1:
                         print(f'WARNING: {fba_order_id}/{customer_order_id} have multiple tracking numbers!')
-                    
+
                     html = driver.find_element_by_id('shipment-tables').get_attribute('innerHTML')
                     carrier = re.findall(r'Carrier:.*<br>', html)[0].replace('Carrier:', '').replace('<br>', '').strip()
                     if carrier in carrier_names.keys():
@@ -98,12 +72,13 @@ def get_fba_tracking(driver, input, output):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-u", "--email", type=str, help="Seller account email")
+    parser.add_argument("-r", "--reuse", type=bool, help="Reuse Amazon Management Profile?")
     parser.add_argument("-i", "--input", type=str, default="fba-order-ids.txt", help="FBA/customer order ids")
     parser.add_argument("-o", "--output", type=str, default="trackings.txt", help="Shipping confirmation file")
     args = parser.parse_args()
     print(args)
 
-    driver = init_web_driver(args.email)
+    driver = seller_central_base.init_web_driver(args.email, args.reuse)
     try:
         get_fba_tracking(driver, args.input, args.output)
     finally:

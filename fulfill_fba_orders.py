@@ -3,34 +3,9 @@ import re
 import sys
 from time import sleep
 
-import chromedriver_autoinstaller
-from selenium import webdriver
 from selenium.webdriver.support.ui import Select
 
-
-def init_web_driver(email):
-    chromedriver_autoinstaller.install()
-
-    options = webdriver.ChromeOptions()
-    ddir = f'C:\\Tmp\\pltools\\{email.lower()}'
-    # If two-factors not able to retrieve, try use code in the below
-    # ddir = os.path.expanduser('~\\.amazon_seller_management\\US')
-    options.add_argument(f'user-data-dir={ddir}')
-    options.add_argument('--disable-extensions')
-    options.add_argument('--start-maximized')
-    options.add_argument('--disable-notifications')
-    options.add_experimental_option('excludeSwitches', ['enable-automation'])
-    options.add_experimental_option('prefs', {'profile.default_content_setting_values.notifications': 2})
-
-    driver = webdriver.Chrome(options=options)
-    driver.set_page_load_timeout(30)
-    driver.implicitly_wait(7)
-
-    driver.get('https://sellercentral.amazon.com/orders-v3/ref=xx_myo_dnav_xx?page=1')
-    while len(driver.find_elements_by_css_selector('#myo-search-input')) == 0:
-        print('Please login manually to initialize')
-        sleep(5)
-    return driver
+import seller_central_base
 
 
 def load_us_states():
@@ -138,12 +113,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-u", "--email", type=str, help="Seller account email")
     parser.add_argument("-s", "--sku", type=str, help="SKU of listing")
+    parser.add_argument("-r", "--reuse", type=bool, help="Reuse Amazon Management Profile?")
     parser.add_argument("-i", "--input", type=str, default="orders-to-fulfill.txt", help="Source orders to fulfill")
     parser.add_argument("-o", "--output", type=str, default="fulfill-results.txt", help="Order fulfill results")
     args = parser.parse_args()
     print(args)
 
-    driver = init_web_driver(args.email)
+    driver = seller_central_base.init_web_driver(args.email, args.reuse)
     try:
         fulfill(driver, args.sku, args.input, args.output)
     finally:
